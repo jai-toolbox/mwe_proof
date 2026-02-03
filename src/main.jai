@@ -351,7 +351,7 @@ test_swap_proof :: () {
     print("\n");
 }
 
-main :: () {
+mainx :: () {
     test_and();
     test_forall();
     test_excluded_middle();
@@ -360,3 +360,211 @@ main :: () {
     test_swap_proof();
 }
 
+#import "Basic";
+#import "Compiler";
+
+Fact :: struct {
+    lhs_expr: string;
+    lhs_line: int;
+    rhs_expr: string;
+    rhs_line: int;
+}
+
+TypeFact :: struct {
+    expr: string;
+    type_set: string;
+}
+
+fact_to_string :: (fact: Fact) -> string {
+    return tprint("va(%, %) = va(%, %)", fact.lhs_expr, fact.lhs_line, fact.rhs_expr, fact.rhs_line);
+}
+
+type_fact_to_string :: (fact: TypeFact) -> string {
+    return tprint("% in %", fact.expr, fact.type_set);
+}
+
+get_type_set :: (type_infox: *Type_Info) -> string {
+    if !type_infox return "?";
+    
+    if type_infox.type == {
+        case .INTEGER;  return "Z";
+        case .FLOAT;    return "R";
+        case .BOOL;     return "B";
+        case .STRING;   return "String";
+    }
+    
+    return "?";
+}
+
+generate_type_facts :: (body: *Code_Procedure_Body) -> [..] TypeFact {
+    type_facts: [..] TypeFact;
+    
+    if body.header {
+        for arg: body.header.arguments {
+            arg_type := arg.type;  // Type_Info for the argument
+            
+            if arg_type && arg_type.type == .POINTER {
+                ptr_info := cast(*Type_Info_Pointer) arg_type;
+                pointed_type := ptr_info.pointer_to;
+                
+                type_set := get_type_set(pointed_type);
+                if type_set != "?" {
+                    fact: TypeFact;
+                    fact.expr = tprint("%.*", arg.name);
+                    fact.type_set = type_set;
+                    array_add(*type_facts, fact);
+                }
+            } else if arg_type {
+                // non-pointer argument
+                type_set := get_type_set(arg_type);
+                if type_set != "?" {
+                    fact: TypeFact;
+                    fact.expr = copy_string(arg.name);
+                    fact.type_set = type_set;
+                    array_add(*type_facts, fact);
+                }
+            }
+        }
+    }
+    
+    return type_facts;
+}
+
+node_to_string :: (node: *Code_Node) -> string {
+    if !node return "???";
+    
+    if node.kind == {
+        case .IDENT;
+            ident := cast(*Code_Ident) node;
+            return copy_string(ident.name);
+            
+        case .UNARY_OPERATOR;
+            unary := cast(*Code_Unary_Operator) node;
+            op := cast(Operator_Type) unary.operator_type;
+            if op == .POINTER_DEREFERENCE || op == .POSTFIX_DEREFERENCE {
+                sub := node_to_string(unary.subexpression);
+                return tprint("%.*", sub);
+            }
+            if unary.operator_type == xx #char "*" {
+                sub := node_to_string(unary.subexpression);
+                return tprint("*%", sub);
+            }
+    }
+    
+    return "???";
+}
+
+generate_facts :: (body: *Code_Procedure_Body) -> [..] Fact {
+    facts: [..] Fact;
+    tracked: [..] string;
+    
+    if body.header {
+        for body.header.arguments {
+            if it.type_inst && it.type_inst.pointer_to {
+                array_add(*tracked, tprint("%.*", it.name));
+            } else {
+                array_add(*tracked, copy_string(it.name));
+            }
+        }
+    }
+    
+    if body.block {
+        line := 1;
+        for stmt: body.block.statements {
+            modified_expr: string;
+            rhs_expr: string;
+            
+            if stmt.kind == {
+                case .DECLARATION;
+                    decl := cast(*Code_Declaration) stmt;
+                    modified_expr = copy_string(decl.name);
+                    if decl.expression {
+                        rhs_expr = node_to_string(decl.expression);
+                    }
+                    array_add(*tracked, modified_expr);
+                    
+                case .BINARY_OPERATOR;
+                    binop := cast(*Code_Binary_Operator) stmt;
+                    if binop.operator_type == xx #char "=" {
+                        modified_expr = node_to_string(binop.left);
+                        rhs_expr = node_to_string(binop.right);
+                    }
+            }
+            
+            for expr: tracked {
+                fact: Fact;
+                fact.lhs_expr = expr;
+                fact.lhs_line = line;
+                
+                if expr == modified_expr {
+                    fact.rhs_expr = rhs_expr;
+                    fact.rhs_line = line - 1;
+                } else {
+                    fact.rhs_expr = expr;
+                    fact.rhs_line = line - 1;
+                }
+                
+                array_add(*facts, fact);
+            }
+            
+            line += 1;
+        }
+    }
+    
+    return facts;
+}
+
+build :: () {
+    w := compiler_create_workspace("Target");
+    
+    options := get_build_options(w);
+    options.output_type = .NO_OUTPUT;
+    set_build_options(options, w);
+    
+    compiler_begin_intercept(w);
+    
+    add_build_string(#string DONE
+        swap :: (x: *int, y: *int) {
+            temp := y.*;
+            y.* = x.*;
+            x.* = temp;
+        }
+        
+        main :: () {}
+    DONE, w);
+    
+    while true {
+        message := compiler_wait_for_message();
+        if !message break;
+        
+        if message.kind == {
+            case .TYPECHECKED;
+                tc := cast(*Message_Typechecked) message;
+                
+                for tc.procedure_bodies {
+                    body := it.expression;
+                    
+                    if body.header && body.header.name == "swap" {
+                        print("\ntype facts:\n\n");
+                        type_facts := generate_type_facts(body);
+                        for type_facts {
+                            print("%\n", type_fact_to_string(it));
+                        }
+                        
+                        print("\nvalue facts:\n\n");
+                        facts := generate_facts(body);
+                        for facts {
+                            print("%\n", fact_to_string(it));
+                        }
+                    }
+                }
+                
+            case .COMPLETE;
+                break;
+        }
+    }
+    
+    compiler_end_intercept(w);
+}
+
+#run build();
