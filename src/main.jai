@@ -72,6 +72,59 @@ test_forall :: () {
     print("\n");
 }
 
+test_generalized_forall :: () {
+    print("=== GENERALIZED FORALL Proof ===\n");
+    natural_numbers := make_constant(SYM_NAT);
+    
+    x := make_variable("x");
+    y := make_variable("y");
+
+    j := make_variable("j");
+    k := make_variable("k");
+
+    five := make_constant("5");
+    six := make_constant("6");
+
+    X := make_constant("X");
+    Y := make_constant("Y");
+
+    j_in_X := make_rel(SYM_IN, j, X);
+    k_in_Y := make_rel(SYM_IN, k, Y);
+    
+    x_eq_5 := make_eq(x, five);
+    y_eq_6 := make_eq(y, six);
+
+    both := make_and(x_eq_5, y_eq_6);
+
+    forall_x_both := make_forall("x", X, both);
+    forall_y_x_both := make_forall("y", Y, forall_x_both);
+    
+    assumptions: [..]*Formula;
+    array_add(*assumptions, j_in_X);
+    array_add(*assumptions, k_in_Y);
+    array_add(*assumptions, forall_y_x_both);
+    
+    target := make_and(make_eq(j, five), make_eq(k, six));
+
+    proof := create_proof(assumptions, target);
+
+    // it's kinda dumb that we have to do this.
+    add_line_to_proof(*proof, forall_y_x_both, "ASSUMPTION");
+    add_line_to_proof(*proof, k_in_Y, "ASSUMPTION");
+    add_line_to_proof(*proof, j_in_X, "ASSUMPTION");
+
+    add_line_to_proof(*proof, target, "GENERALIZED_FORALL", 0, 1, 2);
+    
+    print_proof(*proof);
+    
+    if is_valid(*proof) {
+        print("Proof is valid for target: %\n", formula_to_string(target));
+    } else {
+        print("Proof is NOT valid.\n");
+    }
+    print("\n");
+}
+
 test_excluded_middle :: () {
     print("=== Excluded Middle Proof ===\n");
     
@@ -351,9 +404,10 @@ test_swap_proof :: () {
     print("\n");
 }
 
-mainx :: () {
+main :: () {
     test_and();
     test_forall();
+    test_generalized_forall();
     test_excluded_middle();
     test_cases_proof();
     test_induction_modification_rules();
