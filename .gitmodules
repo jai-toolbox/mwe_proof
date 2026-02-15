@@ -1,3 +1,6 @@
 [submodule "src/tbx/proof"]
 	path = src/tbx/proof
 	url = git@github.com:jai-toolbox/proof.git
+[submodule "src/tbx/graph"]
+	path = src/tbx/graph
+	url = git@github.com:jai-toolbox/graph.git

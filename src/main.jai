@@ -1,6 +1,9 @@
 #import "Basic";
 #import "tbx/proof";
 
+#import "knowledge";
+#import "generation";
+
 test_and :: () {
     print("=== AND Proof ===\n");
 
@@ -404,14 +407,43 @@ test_swap_proof :: () {
     print("\n");
 }
 
+test_reflexivity_and_transitivity :: () {
+    assumptions : [..] *Formula; 
+
+    array_add(*assumptions, make_transitivity_formula(make_constant("Z")));
+    array_add(*assumptions, make_symmetry_formula(make_constant("Z")));
+
+    a := make_variable("a");
+    b := make_variable("b");
+    c := make_variable("c");
+
+    array_add(*assumptions, make_eq(a, b));
+    array_add(*assumptions, make_eq(c, b));
+
+    target := make_eq(a, c);
+
+    proof := create_proof(assumptions, target);
+
+    for assumptions {
+        add_line_to_proof(*proof, it, "ASSUMPTION");
+    }
+
+    // TODO: we use the new function here to create the proof.
+
+    print_proof(*proof);
+}
+
 main :: () {
-    test_and();
-    test_forall();
-    test_generalized_forall();
-    test_excluded_middle();
-    test_cases_proof();
-    test_induction_modification_rules();
-    test_swap_proof();
+    // test_and();
+    // test_forall();
+    // test_generalized_forall();
+    // test_excluded_middle();
+    // test_cases_proof();
+    // test_induction_modification_rules();
+    // test_swap_proof();
+    // test_reflexivity_and_transitivity();
+    // test_equality_graph();
+    // test_equality_graph_complex();
 }
 
 #import "Basic";
@@ -568,6 +600,80 @@ generate_facts :: (body: *Code_Procedure_Body) -> [..] Fact {
     return facts;
 }
 
+create_proof_from_extracted_facts :: (type_facts: [..] TypeFact, value_facts: [..] Fact) {
+    print("=== Proof from Extracted Facts ===\n\n");
+    
+    get_type_set_term :: (type_set: string) -> *Term {
+        if type_set == "Z" return make_constant("Z");
+        if type_set == "R" return make_constant("R");
+        if type_set == "B" return make_constant("B");
+        if type_set == "String" return make_constant("String");
+        return make_constant("?");
+    }
+    
+    assumptions: [..]*Formula;
+    
+    // Create type membership assumptions from type facts
+    for tf: type_facts {
+        expr_term := make_constant(tf.expr);
+        type_set_term := get_type_set_term(tf.type_set);
+        membership := make_rel(SYM_IN, expr_term, type_set_term);
+        array_add(*assumptions, membership);
+    }
+    
+    // Create value equality assumptions from value facts
+    for vf: value_facts {
+        lhs_term := make_function("va", make_constant(vf.lhs_expr), make_constant(tprint("%", vf.lhs_line)));
+        rhs_term := make_function("va", make_constant(vf.rhs_expr), make_constant(tprint("%", vf.rhs_line)));
+        equality := make_eq(lhs_term, rhs_term);
+        array_add(*assumptions, equality);
+    }
+
+    
+    // Target: va_x_3 = va_y_0 and va_y_3 = va_x_0
+
+    x := make_constant("x.*");
+    y := make_constant("y.*");
+    temp := make_constant("temp");
+
+    zero := make_constant("0");
+    three := make_constant("3");
+    Z := make_constant("Z");
+
+    for i: 0..3 {
+        blah := make_rel(SYM_IN, make_function("va", x, make_constant(sprint("%", i))), Z);
+        blahy := make_rel(SYM_IN, make_function("va", y, make_constant(sprint("%", i))), Z);
+        blaht := make_rel(SYM_IN, make_function("va", temp, make_constant(sprint("%", i))), Z);
+        array_add(*assumptions, blah, blahy, blaht);
+    }
+
+    array_add(*assumptions, make_transitivity_formula(make_constant("Z")));
+    array_add(*assumptions, make_symmetry_formula(make_constant("Z")));
+
+    va_x_0 := make_function("va", x, zero);
+    va_x_3 := make_function("va", x, three);
+
+    va_y_0 := make_function("va", y, zero);
+    va_y_3 := make_function("va", y, three);
+
+    va_x_3_eq_va_y_0 := make_eq(va_x_3, va_y_0);
+    va_x_0_eq_va_y_3 := make_eq(va_y_3, va_x_0);
+    swapped := make_and(va_x_3_eq_va_y_0, va_x_0_eq_va_y_3);
+    
+    proof := create_proof(assumptions, swapped);
+    
+    for assumption: assumptions {
+        add_line_to_proof(*proof, assumption, "ASSUMPTION");
+    }
+
+    success := try_prove_equality(*proof, va_y_3, va_x_0, make_constant("Z"));
+    success = try_prove_equality(*proof, va_x_3, va_y_0, make_constant("Z"));
+
+    add_line_to_proof(*proof, swapped, "AND", 36, 30);
+    
+    print_proof(*proof);
+}
+
 build :: () {
     w := compiler_create_workspace("Target");
     
@@ -597,19 +703,11 @@ build :: () {
                 
                 for tc.procedure_bodies {
                     body := it.expression;
-                    
                     if body.header && body.header.name == "swap" {
-                        print("\ntype facts:\n\n");
                         type_facts := generate_type_facts(body);
-                        for type_facts {
-                            print("%\n", type_fact_to_string(it));
-                        }
+                        value_facts := generate_facts(body);
                         
-                        print("\nvalue facts:\n\n");
-                        facts := generate_facts(body);
-                        for facts {
-                            print("%\n", fact_to_string(it));
-                        }
+                        create_proof_from_extracted_facts(type_facts, value_facts);
                     }
                 }
                 
