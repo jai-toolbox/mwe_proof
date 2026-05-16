@@ -488,8 +488,12 @@ generate_type_facts :: (body: *Code_Procedure_Body) -> [..] TypeFact {
     if body.header {
         for arg: body.header.arguments {
             arg_type := arg.type;  // Type_Info for the argument
+
+            if arg_type == null {
+                continue;
+            }
             
-            if arg_type && arg_type.type == .POINTER {
+            if arg_type.type == .POINTER {
                 ptr_info := cast(*Type_Info_Pointer) arg_type;
                 pointed_type := ptr_info.pointer_to;
                 
@@ -500,8 +504,7 @@ generate_type_facts :: (body: *Code_Procedure_Body) -> [..] TypeFact {
                     fact.type_set = type_set;
                     array_add(*type_facts, fact);
                 }
-            } else if arg_type {
-                // non-pointer argument
+            } else { // non-pointer argument
                 type_set := get_type_set(arg_type);
                 if type_set != "?" {
                     fact: TypeFact;
@@ -673,6 +676,121 @@ create_proof_from_extracted_facts :: (type_facts: [..] TypeFact, value_facts: [.
     
     print_proof(*proof);
 }
+
+/*
+
+----------
+Terminology
+
+Execution Sequence: The ES of a program on some input is the sequence of line numbers that the function follows. (in general this actuall will enumerate the expressions, but for now line number works).
+Hits: Given a line number n, then hits(n) = (i : ES[i] = n), these are indices into the execution sequence.
+Value After: va(x, n) is the value of x, after executing the line ES[n].
+Implicit Equalities: Given i and i+1 and a collection of existing variables V such that x in V, if ES[i+1] is not an assignment to x, then the line ES[i+1] emits the assumption that va(v, i+1) = va(v, i) for all v otherwise if it is an assignment to x, then we obtain va(v, i+1) = v(v, i) for all v in V if v != x.
+
+---------
+
+0: sum_of_1_to_n :: (n : int) {   |
+1:     sum := 0;                  |  fa l in hits(1), va(sum, 1) = 0 and ES[l+1] = 2
+2:     i := 1;                    |  fa l in hits(2), va(i, l) = 1   and ES[l+1] = 3
+3:     while i <= n {             |  fa l in hits(3), if va(i, l-1) <= n imp ES[l+1] = 4 else ES[l+1] = 7
+4:         sum += i;              |  fa l in hits(4), va(sum, l) = va(sum, l-1) + va(i, l-1) and ES[l+1] = 5
+5:         i += 1;                |  fa l in hits(5), va(i, l) = va(i, l-1) + 1 and ES[l+1] = 3 (go back)
+6:     }                          |  
+7:     return sum;                |  sum_of_1_to_n(n) = va(sum, 6) 
+8: }                              |
+
+
+need to prove: sum_of_1_to_n(n) = sum(1, n)
+
+where
+
+sum(n) = n + sum(n-1), n > 1
+sum(1) = 1
+
+----
+
+PROOF OF TERMINATION HERE.
+
+Therefore the function terminates and let ES be the finite execution sequence of the function.
+
+----
+First we start with the variable i, and we claim that if (s1, ..., sk) = hits(3), then i = va(i, si).
+
+We know that va(i, s1) = va(i, s1-1) and because ES[s1] = 3, then va(i, s1) = va(i, 2) = 1. 
+Now va(i, 2) = 1, therefore we know that va(i, s1) = 1 (base case).
+
+Now we do the inductive step. let j in [1..k-1] and assume that va(i, sj) = j, we want to prove that va(i, s(j+1)) = j+1.
+
+note that ES[sj + 2] = 5, therefore va(i, sj + 2) = va(i, sj + 1) + 1 so 
+
+j = va(i, sj) = va(i, sj + 1) = va(i, sj + 2) - 1
+
+va(i, sj + 2) = j + 1
+
+Also va(i, sj + 2) = va(i, sj + 3) (by implicit equalities between lines).
+
+ES[sj + 3] = 3, therfore by listing out we see that sj + 3 = s(j+1)
+
+thus we have j + 1 = va(i, s(j+1))
+
+Therefore by finite induction, we have that if (s1, ..., sk) = hits(3), then i = va(i, si)
+
+----
+
+Now we want to prove that the return value is sum(n). 
+
+We want to prove that if (s1, ..., sk) = hits(4), then va(sum, sj) = sum(j) and we'd also want to prove that k = n too.
+
+We do by finite induction so for the base case we can list out the execution sequence of the function.
+
+We already know that va(i, 2) = 1,  and that ES = (..., 2, 3, 4, ...) therefore by transitivity on the implicit equalites we obtain that
+
+va(sum, s1) = va(sum, 4) = va(sum, 3) + va(i, 3) = 0 + 1 = 1 = sum(1) so the base case is done.
+
+inductive step assume that 1 <= j < k that va(sum, sj) = sum(j), we'll prove that va(sum, s(j+1)) = sum(j+1)
+
+Note: sum(j+1) = sum(j) + (j + 1)
+
+va(sum, s(j+1)) = va(sum, s(j+1) - 1) + va(i, s(j+1) - 1) 
+
+ES[s(j+1)] = 4 and so ES[s(j+1) - 1] = 3, so s(j+1) - 1 in hits(3) = (p1, ... pr) and specifically s(j+1) - 1 = p(j+1)
+
+Therefore from the previous thing we proved we hvae that va(i, s(j+1) - 1) = va(i, p(j+1)) = j + 1, so 
+
+va(sum, s(j+1)) = va(sum, s(j+1) - 1) + (j + 1).
+
+
+Before we continue lets note that ES[s(j+1) - 1] = 3, ES[s(j+1) - 2] = 5, ES[s(j+1) - 3] = 4, so s(j+1) - 3 in hits(4) and specifically 
+
+s(j+1) - 3 = sj
+
+Now va(sum, s(j+1) - 1) = va(sum, s(j+1) - 2) = va(sum, s(j+1) - 3) = va(sum, sj) =IH= sum(j), therefore 
+
+va(sum, s(j+1)) = sum(j) + (j + 1) = sum(j+1), as needed.
+
+----- 
+
+Now we prove that if (s1, ..., sk) = hits(4) then k = n where n is the number passed into the function.
+
+We do this by proving the same about hits(5), because hits(4) + 1 = hits(5) 
+
+So lets assume that (s1, ..., sk) = hits(5). Suppose that k < n, therefore by the previous proof (2 ago), 
+we saw that va(i, sk) = k, thus note that ES[sk + 1] = 3, then ES[sk + 2] = 4, and ES[sk + 2] = 5 (as k < n), 
+so then sk + 2 in hits(5), which is a contradiction so it must be that , k >= n. 
+
+Suppose that k > n, if thats true va(i, sk) = k > n, and so then ES[sk - 2] = 3, and va(i, sk - 2) >= n, so then ES[sk - 1] = 7 and the function ends after that.
+But apparently ES[sk] = 5, meaning that the function continues, which is nonsense so k <= n. Thus k = n.
+
+----
+
+Thus we've proven that:
+
+if (s1, ..., sn) = hits(4), then va(sum, sj) = sum(j), so specifically we've shown that va(sum, sn) = sum(n). With minor work we can show that the return value is the same as va(sum, sn) (becaus va(i, sn) = n and the while loop terminates etc...) 
+
+
+*/
+
+
 
 build :: () {
     w := compiler_create_workspace("Target");

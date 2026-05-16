@@ -48,8 +48,8 @@ get_or_create_node :: (g: *Equality_Graph, t: *Term) -> int {
     
     existing := table_find_pointer(*g.term_to_node, key);
     if existing {
-        log("get_or_create_node: found existing node % for '%'", <<existing, key);
-        return <<existing;
+        log("get_or_create_node: found existing node % for '%'", existing.*, key);
+        return existing.*;
     }
     
     idx := g.graph.node_count;
@@ -90,7 +90,7 @@ add_equality_edge :: (g: *Equality_Graph, t1: *Term, t2: *Term, proof_line: int)
 get_edge_proof_line :: (g: *Equality_Graph, from: int, to: int) -> int {
     key := Edge_Key.{from = from, to = to};
     ptr := table_find_pointer(*g.edge_proof_lines, key);
-    if ptr return <<ptr;
+    if ptr return ptr.*;
     return -1;  // Not found
 }
 
@@ -112,8 +112,8 @@ find_equality_path :: (g: *Equality_Graph, start_term: *Term, end_term: *Term) -
         return result;
     }
     
-    start_node := <<start_node_ptr;
-    end_node := <<end_node_ptr;
+    start_node := start_node_ptr.*;
+    end_node := end_node_ptr.*;
     
     log("find_equality_path: start_node = %, end_node = %", start_node, end_node);
     
@@ -231,7 +231,7 @@ try_prove_equality :: (proof: *Proof, var1: *Term, var2: *Term, domain: *Term) -
         
         log("try_prove_equality: start_ptr = %, end_ptr = %", start_ptr != null, end_ptr != null);
         
-        if start_ptr && end_ptr && <<start_ptr == <<end_ptr {
+        if start_ptr && end_ptr && start_ptr.* == end_ptr.* {
             log("try_prove_equality: same node, using reflexivity");
             eq_formula := make_eq(var1, var2);
             add_line_to_proof(proof, eq_formula, "EQ");
@@ -280,7 +280,7 @@ try_prove_equality :: (proof: *Proof, var1: *Term, var2: *Term, domain: *Term) -
     get_actual_line :: (line_idx: int, assumption_map: *Table(int, int)) -> int {
         if line_idx < 0 {
             ptr := table_find_pointer(assumption_map, line_idx);
-            if ptr return <<ptr;
+            if ptr return ptr.*;
             return -1;
         }
         return line_idx;
