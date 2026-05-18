@@ -187,7 +187,7 @@ find_line_with_formula :: (proof: *Proof, f: *Formula) -> int {
 
 ensure_assumption_as_line :: (proof: *Proof, assumption_idx: int) -> int {
     log("ensure_assumption_as_line: ensuring assumption % is a proof line", assumption_idx);
-    assumption := proof.assumptions[assumption_idx] ;
+    assumption := proof.assumptions[assumption_idx];
     
     existing := find_line_with_formula(proof, assumption);
     if existing >= 0 {
@@ -254,7 +254,7 @@ try_prove_equality :: (proof: *Proof, var1: *Term, var2: *Term, domain: *Term) -
         if line_idx < 0 {
             assumption_idx := -(line_idx + 1);
             log("try_prove_equality: this is assumption index %", assumption_idx);
-            assumption := proof.assumptions[assumption_idx] ;
+            assumption := proof.assumptions[assumption_idx];
             
             found_line := -1;
             for existing, i: proof.lines {
